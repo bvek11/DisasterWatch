@@ -2,9 +2,7 @@
 
 A real-time disaster monitoring web app that aggregates live data from multiple
 official sources and plots incidents on an interactive dark-themed world map.
-
 Webpage: https://bvek11.github.io/DisasterWatch/
----
 
 ## 🖥️ What It Does
 
