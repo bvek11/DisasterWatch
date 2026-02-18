@@ -1,4 +1,4 @@
-# 🌍 DisasterWatch — Live Global Incident Map
+## 🌍 DisasterWatch — Live Global Incident Map
 
 A real-time disaster monitoring web app that aggregates live data from multiple
 official sources and plots incidents on an interactive dark-themed world map.
@@ -26,20 +26,6 @@ Webpage: https://bvek11.github.io/DisasterWatch/
 | **ReliefWeb (OCHA)** | Active humanitarian disasters | Daily |
 
 
-
-## 📁 Project Structure
-
-```
-disaster-watch/
-├── index.html              ← Frontend (open this in browser)
-├── README.md
-└── backend/
-    ├── server.js           ← Express API server
-    └── package.json
-```
-
----
-
 ## 🗺️ Map Dot Colors
 
 | Color | Severity |
@@ -48,9 +34,5 @@ disaster-watch/
 | 🟠 Orange | High — M5.5+, major storms, volcanoes |
 | 🟡 Yellow | Moderate — M4.5+, active floods |
 | 🟢 Green | Low severity |
-
-Dot shape colors indicate disaster type:
-- 🔴 Earthquake · 🔵 Flood · 🟠 Fire · 🟣 Storm · 🟤 Volcano · 🔷 Tsunami
----
 
 Made with ❤️ using Leaflet.js, Express, and open government APIs
