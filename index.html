@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DisasterWatch — Live Global Incident Map</title>
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+  <!-- Chart.js for analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0a0e14;
+      --surface: #0f1419;
+      --surface2: #1a1f29;
+      --border: #2a2f3a;
+      --accent: #ff6b6b;
+      --accent2: #4ecdc4;
+      --text: #e6edf3;
+      --muted: #8b92a0;
+      --green: #51cf66;
+      --blue: #339af0;
+      --purple: #9775fa;
+      --orange: #ff922b;
+      --yellow: #ffd43b;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ── HEADER ── */
+    #header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: linear-gradient(180deg, rgba(10,14,20,0.98) 0%, rgba(10,14,20,0.90) 100%);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-pulse {
+      width: 10px; height: 10px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(255,107,107,0.7); }
+      50% { opacity: 0.6; transform: scale(0.85); box-shadow: 0 0 0 10px rgba(255,107,107,0); }
+    }
+
+    .logo h1 {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .logo span {
+      color: var(--accent);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: rgba(78,205,196,0.1);
+      border: 1px solid rgba(78,205,196,0.3);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent2);
+    }
+
+    .header-count {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .header-count strong {
+      color: var(--text);
+      font-size: 20px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-radius: 6px;
+    }
+
+    .btn:hover {
+      background: var(--surface2);
+      border-color: var(--accent2);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #ff5252;
+      border-color: #ff5252;
+    }
+
+    /* ── MAP ── */
+    #map {
+      position: fixed;
+      top: 65px; left: 0; right: 0; bottom: 0;
+    }
+
+    .leaflet-tile {
+      filter: brightness(0.5) saturate(0.3) hue-rotate(200deg);
+    }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      position: fixed;
+      top: 65px;
+      left: 0;
+      bottom: 0;
+      width: 360px;
+      z-index: 500;
+      background: rgba(10, 14, 20, 0.95);
+      border-right: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* Filters */
+    .filters {
+      padding: 16px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .filter-btn {
+      padding: 6px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .filter-btn:hover {
+      border-color: var(--accent2);
+      transform: translateY(-1px);
+    }
+
+    .filter-btn.active {
+      border-color: currentColor;
+      background: currentColor;
+      color: #fff !important;
+    }
+
+    .filter-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+    }
+
+    /* Incident list */
+    #incident-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 0;
+    }
+
+    /* Hide scrollbar but keep functionality */
+    #incident-list::-webkit-scrollbar { 
+      width: 0px;
+      background: transparent;
+    }
+    
+    #incident-list {
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE and Edge */
+    }
+
+    .incident-item {
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(42,47,58,0.5);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .incident-item:hover {
+      background: rgba(78,205,196,0.08);
+    }
+
+    .incident-item.active {
+      background: rgba(78,205,196,0.12);
+      border-left: 3px solid var(--accent2);
+    }
+
+    .incident-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .incident-badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .incident-severity {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .incident-title {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+
+    .incident-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .incident-loc {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* ── CHARTS PANEL ── */
+    #charts-panel {
+      position: fixed;
+      top: 65px; right: 0; bottom: 0;
+      width: 450px;
+      z-index: 500;
+      background: rgba(10, 14, 20, 0.95);
+      border-left: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.3s;
+      overflow-y: auto;
+    }
+
+    #charts-panel.open { transform: translateX(0); }
+
+    .charts-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .charts-header h2 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .chart-container {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chart-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      letter-spacing: 0.5px;
+    }
+
+    canvas {
+      max-height: 250px;
+    }
+
+    /* ── LEGEND ── */
+    #legend {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      z-index: 600;
+      background: rgba(10,14,20,0.95);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      padding: 16px 18px;
+      border-radius: 8px;
+      min-width: 200px;
+    }
+
+    .legend-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      letter-spacing: 1px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .legend-circle {
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .legend-label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── POPUP ── */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 8px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+      padding: 0 !important;
+      min-width: 300px;
+    }
+
+    .leaflet-popup-tip {
+      background: var(--surface) !important;
+    }
+
+    .popup-inner {
+      padding: 20px 22px;
+    }
+
+    .popup-header {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .popup-icon {
+      font-size: 32px;
+      line-height: 1;
+    }
+
+    .popup-type {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .popup-title {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    .popup-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+
+    .popup-label {
+      color: var(--muted);
+      font-weight: 600;
+      min-width: 80px;
+    }
+
+    .popup-value {
+      color: var(--text);
+      flex: 1;
+    }
+
+    .popup-link {
+      display: block;
+      margin-top: 16px;
+      padding: 10px;
+      background: rgba(78,205,196,0.1);
+      border: 1px solid rgba(78,205,196,0.3);
+      color: var(--accent2);
+      text-decoration: none;
+      text-align: center;
+      border-radius: 6px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .popup-link:hover {
+      background: rgba(78,205,196,0.2);
+      transform: translateY(-1px);
+    }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 9999;
+      transition: transform 0.3s;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── STATS ── */
+    .stats-grid {
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-card {
+      text-align: center;
+      padding: 12px;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .stat-num {
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    /* Loading */
+    .loading {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+    }
+
+    .loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading" id="loading">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Loading disaster data...</div>
+</div>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="logo">
+    <div class="logo-pulse"></div>
+    <h1>Disaster<span>Watch</span></h1>
+  </div>
+  <div class="header-actions">
+    <div class="header-badge">
+      <span>●</span> Live
+    </div>
+    <div class="header-count">
+      <strong id="total-count">0</strong> incidents
+    </div>
+    <button class="btn" onclick="toggleCharts()">📊 Analytics</button>
+    <button class="btn btn-primary" onclick="refreshData()">↻ Refresh</button>
+  </div>
+</div>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sidebar-header">
+    <h2>Active Incidents</h2>
+  </div>
+
+  <div class="filters" id="filters"></div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--accent)" id="stat-critical">0</div>
+      <div class="stat-label">Critical</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--orange)" id="stat-high">0</div>
+      <div class="stat-label">High</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--accent2)" id="stat-sources">0</div>
+      <div class="stat-label">Sources</div>
+    </div>
+  </div>
+
+  <div id="incident-list"></div>
+</div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- CHARTS PANEL -->
+<div id="charts-panel">
+  <div class="charts-header">
+    <h2>📊 Disaster Analytics</h2>
+    <button class="btn" onclick="toggleCharts()">✕</button>
+  </div>
+  
+  <div class="chart-container">
+    <div class="chart-title">Incidents by Type (Last 24h)</div>
+    <canvas id="typeChart"></canvas>
+  </div>
+  
+  <div class="chart-container">
+    <div class="chart-title">Severity Distribution</div>
+    <canvas id="severityChart"></canvas>
+  </div>
+  
+  <div class="chart-container">
+    <div class="chart-title">Incidents Over Time</div>
+    <canvas id="timelineChart"></canvas>
+  </div>
+
+  <div class="chart-container">
+    <div class="chart-title">Top 10 Affected Regions</div>
+    <canvas id="regionChart"></canvas>
+  </div>
+</div>
+
+<!-- LEGEND -->
+<div id="legend">
+  <div class="legend-title">Severity Scale</div>
+  <div class="legend-row">
+    <div class="legend-circle" style="width:18px;height:18px;background:var(--accent)"></div>
+    <div class="legend-label">Critical</div>
+  </div>
+  <div class="legend-row">
+    <div class="legend-circle" style="width:14px;height:14px;background:var(--orange)"></div>
+    <div class="legend-label">High</div>
+  </div>
+  <div class="legend-row">
+    <div class="legend-circle" style="width:10px;height:10px;background:var(--yellow)"></div>
+    <div class="legend-label">Moderate</div>
+  </div>
+  <div class="legend-row">
+    <div class="legend-circle" style="width:8px;height:8px;background:var(--green)"></div>
+    <div class="legend-label">Low</div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  DISASTERWATCH — Enhanced with NLP + Analytics
+// ═══════════════════════════════════════════════════
+
+// Expanded disaster types with distinct colors
+const DISASTER_TYPES = {
+  earthquake:  { color: '#e74c3c', icon: '🌍', label: 'Earthquake' },
+  flood:       { color: '#3498db', icon: '💧', label: 'Flood' },
+  fire:        { color: '#ff6b35', icon: '🔥', label: 'Wildfire' },
+  storm:       { color: '#9b59b6', icon: '🌀', label: 'Storm' },
+  volcano:     { color: '#d35400', icon: '🌋', label: 'Volcano' },
+  tsunami:     { color: '#1abc9c', icon: '🌊', label: 'Tsunami' },
+  drought:     { color: '#f39c12', icon: '🏜️', label: 'Drought' },
+  landslide:   { color: '#795548', icon: '⛰️', label: 'Landslide' },
+  heatwave:    { color: '#ff5722', icon: '🌡️', label: 'Heatwave' },
+  coldwave:    { color: '#00bcd4', icon: '❄️', label: 'Cold Wave' },
+  tornado:     { color: '#7d3c98', icon: '🌪️', label: 'Tornado' },
+  avalanche:   { color: '#b0bec5', icon: '🏔️', label: 'Avalanche' },
+  cyclone:     { color: '#673ab7', icon: '🌀', label: 'Cyclone' },
+  dust:        { color: '#a1887f', icon: '💨', label: 'Dust Storm' },
+  other:       { color: '#95a5a6', icon: '⚠️', label: 'Incident' },
+};
+
+// ══════════════════════════════════════════════════════
+//  ENHANCED NLP - Context-Aware Disaster Classification
+// ══════════════════════════════════════════════════════
+const NLP_KEYWORDS = {
+  earthquake: {
+    primary: ['earthquake', 'quake', 'seismic', 'tremor', 'aftershock', 'temblor'],
+    context: ['magnitude', 'richter', 'epicenter', 'fault', 'tectonic', 'shaking'],
+    severity: ['massive', 'devastating', 'powerful', 'major', 'strong']
+  },
+  flood: {
+    primary: ['flood', 'flooding', 'flooded', 'deluge', 'inundation'],
+    context: ['river', 'dam', 'rainfall', 'monsoon', 'overflow', 'submerged', 'waterlogged'],
+    severity: ['catastrophic', 'severe', 'extreme', 'widespread']
+  },
+  fire: {
+    primary: ['wildfire', 'fire', 'blaze', 'inferno', 'bushfire', 'forest fire'],
+    context: ['burning', 'acres', 'hectares', 'smoke', 'evacuate', 'contained'],
+    severity: ['out of control', 'raging', 'uncontained', 'massive']
+  },
+  storm: {
+    primary: ['storm', 'hurricane', 'typhoon', 'tempest'],
+    context: ['winds', 'mph', 'landfall', 'category', 'pressure', 'gusts'],
+    severity: ['category 5', 'category 4', 'super', 'intense', 'violent']
+  },
+  volcano: {
+    primary: ['volcano', 'volcanic', 'eruption', 'erupt'],
+    context: ['lava', 'ash', 'pyroclastic', 'magma', 'crater'],
+    severity: ['major eruption', 'explosive', 'violent']
+  },
+  tsunami: {
+    primary: ['tsunami', 'tidal wave'],
+    context: ['wave', 'coastal', 'sea', 'ocean', 'surge'],
+    severity: ['major', 'deadly', 'devastating']
+  },
+  tornado: {
+    primary: ['tornado', 'twister', 'funnel cloud'],
+    context: ['rotation', 'ef', 'touchdown', 'vortex'],
+    severity: ['ef5', 'ef4', 'violent', 'catastrophic']
+  },
+  cyclone: {
+    primary: ['cyclone', 'tropical cyclone'],
+    context: ['category', 'winds', 'depression', 'circulation'],
+    severity: ['severe', 'super', 'very severe']
+  },
+  drought: {
+    primary: ['drought', 'dry spell', 'water shortage'],
+    context: ['rainfall', 'precipitation', 'arid', 'parched'],
+    severity: ['extreme', 'severe', 'exceptional']
+  },
+  heatwave: {
+    primary: ['heatwave', 'heat wave', 'extreme heat'],
+    context: ['temperature', 'degrees', 'celsius', 'fahrenheit', 'hot'],
+    severity: ['record', 'unprecedented', 'deadly']
+  },
+  coldwave: {
+    primary: ['cold wave', 'coldwave', 'freeze', 'arctic blast'],
+    context: ['temperature', 'below zero', 'frost', 'ice'],
+    severity: ['extreme', 'record', 'historic']
+  },
+  landslide: {
+    primary: ['landslide', 'mudslide', 'rockslide', 'debris flow'],
+    context: ['slope', 'hillside', 'buried', 'soil'],
+    severity: ['massive', 'deadly', 'catastrophic']
+  },
+  avalanche: {
+    primary: ['avalanche', 'snow slide'],
+    context: ['mountain', 'snow', 'alpine', 'slope'],
+    severity: ['major', 'deadly']
+  },
+  dust: {
+    primary: ['dust storm', 'sandstorm', 'haboob'],
+    context: ['visibility', 'dust', 'sand', 'desert'],
+    severity: ['massive', 'severe']
+  }
+};
+
+// NLP Classifier - analyzes text and returns disaster type + confidence
+function classifyDisaster(text) {
+  const lower = text.toLowerCase();
+  let bestMatch = { type: null, score: 0 };
+
+  for (const [type, keywords] of Object.entries(NLP_KEYWORDS)) {
+    let score = 0;
+    
+    // Primary keywords (highest weight)
+    for (const kw of keywords.primary) {
+      if (lower.includes(kw)) score += 10;
+    }
+    
+    // Context keywords (medium weight)
+    for (const kw of keywords.context) {
+      if (lower.includes(kw)) score += 3;
+    }
+    
+    // Severity keywords (bonus)
+    for (const kw of keywords.severity) {
+      if (lower.includes(kw)) score += 2;
+    }
+
+    if (score > bestMatch.score) {
+      bestMatch = { type, score };
+    }
+  }
+
+  return bestMatch.score >= 10 ? bestMatch.type : 'other';
+}
+
+// Extract severity from text using NLP
+function extractSeverity(text, magnitude = null) {
+  const lower = text.toLowerCase();
+  
+  // For earthquakes, use magnitude
+  if (magnitude !== null) {
+    if (magnitude >= 7.0) return 'critical';
+    if (magnitude >= 6.0) return 'high';
+    if (magnitude >= 5.0) return 'moderate';
+    return 'low';
+  }
+
+  // Severity keywords
+  const critical = ['catastrophic', 'devastating', 'deadly', 'major disaster', 'emergency', 'casualties'];
+  const high = ['severe', 'major', 'significant', 'widespread', 'intense'];
+  const moderate = ['moderate', 'notable', 'considerable'];
+
+  if (critical.some(kw => lower.includes(kw))) return 'critical';
+  if (high.some(kw => lower.includes(kw))) return 'high';
+  if (moderate.some(kw => lower.includes(kw))) return 'moderate';
+  return 'low';
+}
+
+// Extract location names from text
+function extractLocations(text) {
+  // Simple regex to find capitalized place names
+  const matches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
+  return matches.slice(0, 3); // Return top 3 potential locations
+}
+
+const SEVERITY_CONFIG = {
+  critical: { radius: 16, color: '#ff6b6b', pulse: true },
+  high:     { radius: 12, color: '#ff922b', pulse: false },
+  moderate: { radius: 9,  color: '#ffd43b', pulse: false },
+  low:      { radius: 7,  color: '#51cf66', pulse: false },
+};
+
+// ── State ──────────────────────────────────────────
+let allIncidents = [];
+let markers = {};
+let activeFilters = new Set(Object.keys(DISASTER_TYPES));
+let activeItemId = null;
+let sidebarOpen = true;
+let chartsOpen = false;
+let map;
+
+// Chart instances
+let charts = {
+  type: null,
+  severity: null,
+  timeline: null,
+  region: null
+};
+
+// ── Init Map ───────────────────────────────────────
+function initMap() {
+  map = L.map('map', {
+    center: [20, 0], // Global view
+    zoom: 2.5,
+    zoomControl: true,
+    attributionControl: false,
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+  }).addTo(map);
+
+  L.control.attribution({ prefix: false })
+    .addAttribution('DisasterWatch | OpenStreetMap | USGS | NASA | GDACS | ReliefWeb')
+    .addTo(map);
+}
+
+// ── Create Marker ──────────────────────────────────
+function createMarker(incident) {
+  const type = DISASTER_TYPES[incident.type] || DISASTER_TYPES.other;
+  const sev = SEVERITY_CONFIG[incident.severity] || SEVERITY_CONFIG.low;
+
+  const size = sev.radius * 2;
+  
+  const pulseHtml = sev.pulse ? `
+    <div style="
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      width:${size + 8}px; height:${size + 8}px;
+      border-radius:50%;
+      background:${sev.color};
+      opacity:0.4;
+      animation: pulse-ring 2s ease-out infinite;
+    "></div>
+  ` : '';
+
+  const iconHtml = `
+    <div style="position:relative; width:${size}px; height:${size}px;">
+      ${pulseHtml}
+      <div style="
+        position:absolute; top:50%; left:50%;
+        transform:translate(-50%,-50%);
+        width:${size}px; height:${size}px;
+        border-radius:50%;
+        background:${type.color};
+        border:2px solid rgba(255,255,255,0.3);
+        box-shadow:0 0 20px ${type.color}80;
+      "></div>
+    </div>
+  `;
+
+  const icon = L.divIcon({
+    html: iconHtml,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+
+  const marker = L.marker([incident.lat, incident.lng], { icon })
+    .addTo(map)
+    .bindPopup(() => buildPopupHTML(incident), { maxWidth: 350 });
+
+  marker.on('click', () => highlightItem(incident.id));
+  return marker;
+}
+
+// Add animation keyframes
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes pulse-ring {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+    100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+  }
+`;
+document.head.appendChild(style);
+
+// ── Build Popup HTML ───────────────────────────────
+function buildPopupHTML(incident) {
+  const type = DISASTER_TYPES[incident.type] || DISASTER_TYPES.other;
+  const timeStr = incident.time
+    ? new Date(incident.time).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      })
+    : 'Unknown';
+
+  return `
+    <div class="popup-inner">
+      <div class="popup-header">
+        <div class="popup-icon">${type.icon}</div>
+        <div>
+          <div class="popup-type" style="color:${type.color}">${type.label}</div>
+          <div class="popup-title">${incident.title}</div>
+        </div>
+      </div>
+      <div class="popup-row">
+        <div class="popup-label">Location</div>
+        <div class="popup-value">${incident.location}</div>
+      </div>
+      <div class="popup-row">
+        <div class="popup-label">Severity</div>
+        <div class="popup-value" style="color:${SEVERITY_CONFIG[incident.severity].color};font-weight:700;text-transform:uppercase">
+          ${incident.severity}${incident.magnitude ? ' · M' + incident.magnitude : ''}
+        </div>
+      </div>
+      <div class="popup-row">
+        <div class="popup-label">Source</div>
+        <div class="popup-value">${incident.source}</div>
+      </div>
+      <div class="popup-row">
+        <div class="popup-label">Time</div>
+        <div class="popup-value">${timeStr}</div>
+      </div>
+      ${incident.description ? `
+      <div class="popup-row">
+        <div class="popup-label">Details</div>
+        <div class="popup-value" style="font-size:12px;color:var(--muted)">${incident.description}</div>
+      </div>` : ''}
+      <a class="popup-link" href="${incident.url}" target="_blank">View Source Report →</a>
+    </div>
+  `;
+}
+
+// ── Build Filters ──────────────────────────────────
+function buildFilters() {
+  const container = document.getElementById('filters');
+  container.innerHTML = '';
+
+  // Add "All" button
+  const allBtn = document.createElement('button');
+  allBtn.className = 'filter-btn active';
+  allBtn.innerHTML = `<span class="filter-dot" style="background:#fff"></span> All`;
+  allBtn.onclick = () => toggleAllFilters(allBtn);
+  container.appendChild(allBtn);
+
+  // Add type buttons
+  for (const [type, config] of Object.entries(DISASTER_TYPES)) {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn active';
+    btn.style.color = config.color;
+    btn.innerHTML = `<span class="filter-dot" style="background:${config.color}"></span> ${config.label}`;
+    btn.onclick = () => toggleFilter(type, btn);
+    btn.dataset.type = type;
+    container.appendChild(btn);
+  }
+}
+
+function toggleAllFilters(btn) {
+  if (activeFilters.size === Object.keys(DISASTER_TYPES).length) {
+    activeFilters.clear();
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  } else {
+    activeFilters = new Set(Object.keys(DISASTER_TYPES));
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.add('active'));
+  }
+  updateVisibility();
+}
+
+function toggleFilter(type, btn) {
+  if (activeFilters.has(type)) {
+    activeFilters.delete(type);
+    btn.classList.remove('active');
+  } else {
+    activeFilters.add(type);
+    btn.classList.add('active');
+  }
+  updateVisibility();
+}
+
+function updateVisibility() {
+  allIncidents.forEach(inc => {
+    const show = activeFilters.has(inc.type);
+    if (markers[inc.id]) {
+      if (show) markers[inc.id].addTo(map);
+      else markers[inc.id].remove();
+    }
+  });
+  buildList();
+}
+
+// ── Build Incident List ────────────────────────────
+function buildList() {
+  const list = document.getElementById('incident-list');
+  list.innerHTML = '';
+
+  const visible = allIncidents.filter(i => activeFilters.has(i.type));
+
+  if (visible.length === 0) {
+    list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--muted)">No incidents match filters</div>';
+    return;
+  }
+
+  visible.forEach(inc => {
+    const type = DISASTER_TYPES[inc.type] || DISASTER_TYPES.other;
+    const timeAgo = getTimeAgo(inc.time);
+    
+    // Source badge styling
+    const sourceBadgeIcon = inc.source?.includes('USGS') ? '🔵'
+      : inc.source?.includes('NASA') ? '🟣'
+      : inc.source?.includes('GDACS') ? '🟢'
+      : '🟡';
+
+    const el = document.createElement('div');
+    el.className = 'incident-item' + (inc.id === activeItemId ? ' active' : '');
+    el.id = `item-${inc.id}`;
+    
+    el.innerHTML = `
+      <div class="incident-header">
+        <div class="incident-badge" style="background:${type.color}20;color:${type.color};border:1px solid ${type.color}40">
+          ${type.icon} ${type.label}
+        </div>
+        <div class="incident-severity" style="background:${SEVERITY_CONFIG[inc.severity].color}30;color:${SEVERITY_CONFIG[inc.severity].color}">
+          ${inc.severity}
+        </div>
+      </div>
+      <div class="incident-title">${inc.title}</div>
+      <div class="incident-loc" style="margin-top:6px;font-size:12px;color:var(--muted);">📍 ${inc.location}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:600;text-transform:uppercase;padding:2px 7px;border-radius:3px;border:1px solid ${type.color}40;background:${type.color}15;color:${type.color};">${sourceBadgeIcon} ${inc.source || 'Unknown'}</span>
+        <span style="font-size:11px;color:var(--muted);">${timeAgo}</span>
+      </div>
+    `;
+    
+    el.onclick = () => focusIncident(inc.id);
+    list.appendChild(el);
+  });
+
+  updateStats();
+}
+
+// ── Focus Incident ─────────────────────────────────
+function focusIncident(id) {
+  const inc = allIncidents.find(i => i.id === id);
+  if (!inc) return;
+
+  activeItemId = id;
+  buildList();
+
+  const el = document.getElementById(`item-${id}`);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  map.setView([inc.lat, inc.lng], Math.max(map.getZoom(), 6), { animate: true });
+  if (markers[id]) markers[id].openPopup();
+}
+
+function highlightItem(id) {
+  activeItemId = id;
+  buildList();
+}
+
+// ── Stats ──────────────────────────────────────────
+function updateStats() {
+  const critical = allIncidents.filter(i => i.severity === 'critical').length;
+  const high = allIncidents.filter(i => i.severity === 'high').length;
+  const sources = new Set(allIncidents.map(i => i.source)).size;
+  
+  document.getElementById('stat-critical').textContent = critical;
+  document.getElementById('stat-high').textContent = high;
+  document.getElementById('stat-sources').textContent = sources;
+  document.getElementById('total-count').textContent = allIncidents.length;
+}
+
+// ── UI Controls ────────────────────────────────────
+function toggleCharts() {
+  chartsOpen = !chartsOpen;
+  document.getElementById('charts-panel').classList.toggle('open');
+  if (chartsOpen) updateCharts();
+}
+
+// ── Time Helper ────────────────────────────────────
+function getTimeAgo(isoTime) {
+  if (!isoTime) return 'Unknown';
+  const diff = Date.now() - new Date(isoTime).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ── Toast ──────────────────────────────────────────
+function showToast(msg, duration = 3000) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+// ══════════════════════════════════════════════════════
+//  CHARTS & ANALYTICS
+// ══════════════════════════════════════════════════════
+
+function updateCharts() {
+  updateTypeChart();
+  updateSeverityChart();
+  updateTimelineChart();
+  updateRegionChart();
+}
+
+function updateTypeChart() {
+  const typeCounts = {};
+  for (const type of Object.keys(DISASTER_TYPES)) {
+    typeCounts[type] = allIncidents.filter(i => i.type === type).length;
+  }
+
+  const data = {
+    labels: Object.keys(typeCounts).map(t => DISASTER_TYPES[t].label),
+    datasets: [{
+      data: Object.values(typeCounts),
+      backgroundColor: Object.keys(typeCounts).map(t => DISASTER_TYPES[t].color + '80'),
+      borderColor: Object.keys(typeCounts).map(t => DISASTER_TYPES[t].color),
+      borderWidth: 2,
+    }]
+  };
+
+  if (charts.type) charts.type.destroy();
+  charts.type = new Chart(document.getElementById('typeChart'), {
+    type: 'doughnut',
+    data,
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+      }
+    }
+  });
+}
+
+function updateSeverityChart() {
+  const severities = ['critical', 'high', 'moderate', 'low'];
+  const counts = severities.map(s => allIncidents.filter(i => i.severity === s).length);
+  const colors = ['#ff6b6b', '#ff922b', '#ffd43b', '#51cf66'];
+
+  const data = {
+    labels: severities.map(s => s.toUpperCase()),
+    datasets: [{
+      label: 'Count',
+      data: counts,
+      backgroundColor: colors.map(c => c + '80'),
+      borderColor: colors,
+      borderWidth: 2,
+    }]
+  };
+
+  if (charts.severity) charts.severity.destroy();
+  charts.severity = new Chart(document.getElementById('severityChart'), {
+    type: 'bar',
+    data,
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#8b92a0' }, grid: { color: '#2a2f3a' } },
+        x: { ticks: { color: '#8b92a0' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function updateTimelineChart() {
+  // Group by hour
+  const now = Date.now();
+  const hours = 24;
+  const buckets = Array(hours).fill(0);
+  
+  allIncidents.forEach(inc => {
+    if (!inc.time) return;
+    const age = (now - new Date(inc.time).getTime()) / (1000 * 60 * 60);
+    if (age >= 0 && age < hours) {
+      buckets[Math.floor(age)]++;
+    }
+  });
+
+  const labels = Array.from({ length: hours }, (_, i) => `${hours - i}h ago`);
+
+  const data = {
+    labels: labels.reverse(),
+    datasets: [{
+      label: 'Incidents',
+      data: buckets.reverse(),
+      borderColor: '#4ecdc4',
+      backgroundColor: '#4ecdc430',
+      fill: true,
+      tension: 0.4,
+    }]
+  };
+
+  if (charts.timeline) charts.timeline.destroy();
+  charts.timeline = new Chart(document.getElementById('timelineChart'), {
+    type: 'line',
+    data,
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#8b92a0' }, grid: { color: '#2a2f3a' } },
+        x: { ticks: { color: '#8b92a0', maxTicksLimit: 12 }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function updateRegionChart() {
+  // Count by country/region
+  const regions = {};
+  allIncidents.forEach(inc => {
+    const loc = inc.location.split(',').pop().trim();
+    regions[loc] = (regions[loc] || 0) + 1;
+  });
+
+  const sorted = Object.entries(regions).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  const data = {
+    labels: sorted.map(r => r[0]),
+    datasets: [{
+      label: 'Incidents',
+      data: sorted.map(r => r[1]),
+      backgroundColor: '#9775fa80',
+      borderColor: '#9775fa',
+      borderWidth: 2,
+    }]
+  };
+
+  if (charts.region) charts.region.destroy();
+  charts.region = new Chart(document.getElementById('regionChart'), {
+    type: 'bar',
+    data,
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, ticks: { color: '#8b92a0' }, grid: { color: '#2a2f3a' } },
+        y: { ticks: { color: '#8b92a0' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  DATA SOURCES - More Open Data Added!
+// ══════════════════════════════════════════════════════
+
+// SOURCE 1: USGS Earthquakes
+async function fetchUSGS() {
+  const url = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson';
+  const res = await fetch(url);
+  const data = await res.json();
+
+  return data.features.map(f => {
+    const mag = f.properties.mag;
+    return {
+      id: 'usgs_' + f.id,
+      type: 'earthquake',
+      title: f.properties.title,
+      location: f.properties.place,
+      lat: f.geometry.coordinates[1],
+      lng: f.geometry.coordinates[0],
+      severity: extractSeverity('', mag),
+      magnitude: mag.toFixed(1),
+      time: new Date(f.properties.time).toISOString(),
+      source: 'USGS',
+      url: f.properties.url,
+      description: `Depth: ${f.geometry.coordinates[2].toFixed(1)} km`,
+    };
+  }).filter(i => i.lat && i.lng);
+}
+
+// SOURCE 2: NASA EONET
+async function fetchNASAEONET() {
+  const url = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=14&limit=100';
+  const res = await fetch(url);
+  const data = await res.json();
+
+  const incidents = [];
+  for (const event of data.events) {
+    const category = event.categories?.[0]?.title || '';
+    const type = classifyDisaster(category);
+    const geo = event.geometry?.[event.geometry.length - 1];
+    if (!geo?.coordinates) continue;
+
+    let [lng, lat] = geo.type === 'Point' ? geo.coordinates : geo.coordinates[0];
+
+    incidents.push({
+      id: 'nasa_' + event.id,
+      type,
+      title: event.title,
+      location: event.title,
+      lat, lng,
+      severity: extractSeverity(event.title),
+      time: geo.date,
+      source: 'NASA EONET',
+      url: event.sources?.[0]?.url || 'https://eonet.gsfc.nasa.gov',
+      description: `${category} · Active natural event`,
+    });
+  }
+
+  return incidents.filter(i => i.lat && i.lng);
+}
+
+// SOURCE 3: GDACS (UN)
+async function fetchGDACS() {
+  try {
+    const url = 'https://www.gdacs.org/xml/rss.xml';
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+    const data = await res.json();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(data.contents, 'text/xml');
+    const items = xml.querySelectorAll('item');
+    const incidents = [];
+
+    items.forEach((item, idx) => {
+      if (idx > 30) return;
+      const title = item.querySelector('title')?.textContent || '';
+      const link = item.querySelector('link')?.textContent || 'https://gdacs.org';
+      const desc = item.querySelector('description')?.textContent || '';
+      const pubDate = item.querySelector('pubDate')?.textContent;
+
+      const lat = parseFloat(item.querySelector('geo\\:lat, lat')?.textContent);
+      const lng = parseFloat(item.querySelector('geo\\:long, long')?.textContent);
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const type = classifyDisaster(title + ' ' + desc);
+      const severity = extractSeverity(title + ' ' + desc);
+
+      incidents.push({
+        id: 'gdacs_' + idx,
+        type,
+        title: title.trim(),
+        location: title.split('-').pop()?.trim() || 'Unknown',
+        lat, lng,
+        severity,
+        time: pubDate ? new Date(pubDate).toISOString() : null,
+        source: 'GDACS',
+        url: link,
+        description: desc.replace(/<[^>]+>/g, '').slice(0, 150),
+      });
+    });
+
+    return incidents;
+  } catch (e) {
+    console.warn('GDACS fetch failed:', e);
+    return [];
+  }
+}
+
+// SOURCE 4: ReliefWeb (OCHA)
+async function fetchReliefWeb() {
+  const url = 'https://api.reliefweb.int/v1/disasters?appname=disasterwatch&fields[include][]=name&fields[include][]=country&fields[include][]=date&fields[include][]=type&fields[include][]=url&filter[field]=status&filter[value]=current&limit=50';
+  
+  const res = await fetch(url);
+  const data = await res.json();
+
+  const LOCATION_COORDS = {
+    'Afghanistan': [33.9, 67.7], 'Albania': [41.2, 19.8], 'Algeria': [28.0, 1.6],
+    'Angola': [-11.2, 17.9], 'Argentina': [-38.4, -63.6], 'Australia': [-25.3, 133.8],
+    'Bangladesh': [23.7, 90.4], 'Bolivia': [-16.3, -63.6], 'Brazil': [-14.2, -51.9],
+    'Burkina Faso': [12.2, -1.6], 'Cameroon': [7.4, 12.4], 'Canada': [56.1, -106.3],
+    'Central African Republic': [6.6, 20.9], 'Chad': [15.5, 18.7], 'Chile': [-35.7, -71.5],
+    'China': [35.9, 104.2], 'Colombia': [4.6, -74.1], 'Democratic Republic of the Congo': [-4.0, 21.8],
+    'Ecuador': [-1.8, -78.2], 'Egypt': [26.8, 30.8], 'Ethiopia': [9.1, 40.5],
+    'Haiti': [18.9, -72.3], 'Honduras': [15.2, -86.2], 'India': [20.6, 78.9],
+    'Indonesia': [-0.8, 113.9], 'Iran': [32.4, 53.7], 'Iraq': [33.2, 43.7],
+    'Kenya': [0.02, 37.9], 'Madagascar': [-18.8, 46.9], 'Mali': [17.6, -4.0],
+    'Mexico': [23.6, -102.5], 'Mozambique': [-18.7, 35.5], 'Myanmar': [21.9, 95.9],
+    'Nepal': [28.4, 84.1], 'Niger': [17.6, 8.1], 'Nigeria': [9.1, 8.7],
+    'Pakistan': [30.4, 69.3], 'Peru': [-9.2, -75.0], 'Philippines': [12.9, 122.0],
+    'Somalia': [5.2, 46.2], 'South Sudan': [7.0, 30.0], 'Sudan': [12.9, 30.2],
+    'Syria': [34.8, 38.9], 'Turkey': [38.9, 35.2], 'Uganda': [1.4, 32.3],
+    'Ukraine': [48.4, 31.2], 'Venezuela': [6.4, -66.6], 'Yemen': [15.6, 48.5],
+    'Zimbabwe': [-19.0, 29.2],
+  };
+
+  const results = [];
+  for (const item of data.data || []) {
+    const f = item.fields;
+    const country = f.country?.[0]?.name;
+    if (!country || !LOCATION_COORDS[country]) continue;
+
+    const [lat, lng] = LOCATION_COORDS[country];
+    const type = classifyDisaster(f.name);
+
+    results.push({
+      id: 'rw_' + item.id,
+      type,
+      title: f.name,
+      location: country,
+      lat: lat + (Math.random() - 0.5) * 4, // Spread within country
+      lng: lng + (Math.random() - 0.5) * 4,
+      severity: 'high',
+      time: f.date?.created,
+      source: 'ReliefWeb',
+      url: f.url || `https://reliefweb.int/disaster/${item.id}`,
+      description: `Active humanitarian disaster`,
+    });
+  }
+
+  return results;
+}
+
+// SOURCE 5: Pacific Disaster Center (PDC)
+async function fetchPDC() {
+  // Note: PDC requires API key, but RSS is public
+  try {
+    const url = 'https://api.pdc.org/DisasterAWARE/v2/disasters';
+    // This would need a key, so we'll skip for now
+    return [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// ── Deduplication ──────────────────────────────────
+function deduplicateIncidents(incidents) {
+  const seen = [];
+  return incidents.filter(inc => {
+    const clash = seen.find(s =>
+      s.type === inc.type &&
+      Math.abs(s.lat - inc.lat) < 0.5 &&
+      Math.abs(s.lng - inc.lng) < 0.5
+    );
+    if (!clash) {
+      seen.push(inc);
+      return true;
+    }
+    return false;
+  });
+}
+
+// ── Main Refresh ───────────────────────────────────
+async function refreshData() {
+  const btn = document.querySelector('.btn-primary');
+  const originalText = btn.textContent;
+  btn.textContent = '⟳ Loading...';
+  btn.disabled = true;
+
+  try {
+    showToast('⟳ Fetching from USGS, NASA, GDACS, ReliefWeb...');
+
+    const results = await Promise.allSettled([
+      fetchUSGS(),
+      fetchNASAEONET(),
+      fetchGDACS(),
+      fetchReliefWeb(),
+    ]);
+
+    const combined = results
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => r.value);
+
+    const deduped = deduplicateIncidents(combined);
+
+    // Sort by severity then time
+    const sevOrder = { critical: 0, high: 1, moderate: 2, low: 3 };
+    deduped.sort((a, b) => {
+      const sd = (sevOrder[a.severity] || 3) - (sevOrder[b.severity] || 3);
+      if (sd !== 0) return sd;
+      return new Date(b.time || 0) - new Date(a.time || 0);
+    });
+
+    // Clear old markers
+    Object.values(markers).forEach(m => m.remove());
+    markers = {};
+    allIncidents = deduped;
+
+    // Add new markers
+    deduped.forEach(inc => {
+      markers[inc.id] = createMarker(inc);
+    });
+
+    buildList();
+    if (chartsOpen) updateCharts();
+
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    showToast(`✓ Loaded ${deduped.length} incidents from ${successCount} sources`);
+
+  } catch (err) {
+    console.error('Refresh error:', err);
+    showToast('⚠ Error fetching data');
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+// ── Init ───────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  initMap();
+  buildFilters();
+
+  setTimeout(() => {
+    document.getElementById('loading').classList.add('hidden');
+  }, 1500);
+
+  await refreshData();
+
+  // Auto-refresh every 5 minutes
+  setInterval(refreshData, 5 * 60 * 1000);
+});
+</script>
+</body>
+</html>
